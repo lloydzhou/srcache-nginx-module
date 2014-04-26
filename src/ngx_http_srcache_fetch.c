@@ -445,10 +445,33 @@ ngx_http_srcache_fetch_subrequest(ngx_http_request_t *r,
     return NGX_OK;
 }
 
+static ngx_int_t
+ngx_http_srcache_send_not_modified(ngx_http_request_t *r)
+{
+    r->headers_out.status = NGX_HTTP_NOT_MODIFIED;
+    r->headers_out.status_line.len = 0;
+    r->headers_out.content_type.len = 0;
+    ngx_http_clear_content_length(r);
+    ngx_http_clear_accept_ranges(r);
+
+    if (r->headers_out.content_encoding) {
+        r->headers_out.content_encoding->hash = 0;
+        r->headers_out.content_encoding = NULL;
+    }
+
+    return ngx_http_srcache_next_header_filter(r);
+}
 
 static ngx_int_t
 ngx_http_srcache_fetch_header_filter(ngx_http_request_t *r)
 {
+    if (0 == ngx_strcmp(r->headers_out.etag->value.data, r->headers_in.if_none_match->value.data) ) {
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "srcache etag_out :%s etag-in:%s", r->headers_out.etag->value.data,
+                   r->headers_in.if_none_match->value.data);
+        return ngx_http_srcache_send_not_modified(r);
+    }
+    
     if (r->headers_out.status != NGX_HTTP_OK
         || r->headers_out.last_modified_time == -1)
     {
@@ -467,7 +490,6 @@ ngx_http_srcache_fetch_header_filter(ngx_http_request_t *r)
 
     return ngx_http_srcache_next_header_filter(r);
 }
-
 
 static ngx_int_t
 ngx_http_srcache_test_not_modified(ngx_http_request_t *r)
@@ -496,19 +518,8 @@ ngx_http_srcache_test_not_modified(ngx_http_request_t *r)
             return ngx_http_srcache_next_header_filter(r);
         }
     }
-
-    r->headers_out.status = NGX_HTTP_NOT_MODIFIED;
-    r->headers_out.status_line.len = 0;
-    r->headers_out.content_type.len = 0;
-    ngx_http_clear_content_length(r);
-    ngx_http_clear_accept_ranges(r);
-
-    if (r->headers_out.content_encoding) {
-        r->headers_out.content_encoding->hash = 0;
-        r->headers_out.content_encoding = NULL;
-    }
-
-    return ngx_http_srcache_next_header_filter(r);
+        
+    return ngx_http_srcache_send_not_modified(r);    
 }
 
 
